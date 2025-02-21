@@ -45,24 +45,27 @@ async function run() {
       res.send({ message: "User added successfully", inserted: true, result });
     });
 
-    
     // add task api endpoint
     app.post("/tasks", async (req, res) => {
       try {
         const { title, description, userId } = req.body;
-    
+
         if (!userId) {
           return res.status(400).json({ message: "User ID is required." });
         }
-    
+
         if (!title || title.length > 50) {
-          return res.status(400).json({ message: "Title is required (max 50 characters)." });
+          return res
+            .status(400)
+            .json({ message: "Title is required (max 50 characters)." });
         }
-    
+
         if (description && description.length > 200) {
-          return res.status(400).json({ message: "Description must be within 200 characters." });
+          return res
+            .status(400)
+            .json({ message: "Description must be within 200 characters." });
         }
-    
+
         const newTask = {
           title,
           description: description || "",
@@ -70,37 +73,66 @@ async function run() {
           category: "To-Do",
           userId, // Associate the task with the logged-in user
         };
-    
+
         const result = await tasksCollection.insertOne(newTask);
         res.status(201).json({ message: "Task added successfully!" });
-    
       } catch (error) {
         console.error("Error adding task:", error);
         res.status(500).json({ message: "Internal server error." });
       }
     });
 
-
     // fetch the tasks of logged in user
     app.get("/tasks/:userId", async (req, res) => {
       try {
         const { userId } = req.params;
-    
+
         if (!userId) {
           return res.status(400).json({ message: "User ID is required." });
         }
-    
+
         // Ensure userId is correctly treated as a string
-        const userTasks = await tasksCollection.find({ userId: userId }).toArray();
-    
+        const userTasks = await tasksCollection
+          .find({ userId: userId })
+          .toArray();
+
         res.status(200).json(userTasks);
-    
       } catch (error) {
         console.error("Error fetching tasks:", error);
         res.status(500).json({ message: "Internal server error." });
       }
     });
+
+    // Update Task API
+    const { ObjectId } = require("mongodb"); 
+
+    app.put("/tasks/:taskId", async (req, res) => {
+      try {
+        const { taskId } = req.params;
+        const { title, description } = req.body;
     
+        const updatedTask = await tasksCollection.findOneAndUpdate(
+          { _id: new ObjectId(taskId) },
+          { 
+            $set: { 
+              title, 
+              description, 
+              timestamp: new Date() 
+            } 
+          },
+          { returnDocument: "after" }
+        );
+    
+        if (!updatedTask) {
+          return res.status(404).json({ message: "Task not found." });
+        }
+    
+        res.json({ message: "Task updated successfully", task: updatedTask });
+      } catch (error) {
+        console.error("Error updating task:", error);
+        res.status(500).json({ message: "Internal server error." });
+      }
+    });
     
 
     // -----------------------------------------
