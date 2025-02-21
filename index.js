@@ -135,6 +135,18 @@ async function run() {
     });
     
 
+    // Delete a task (DELETE)
+    app.delete("/tasks/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = await tasksCollection.deleteOne({ _id: new ObjectId(id) });
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({ error: "Failed to delete task" });
+      }
+    });
+
+
     // -----------------------------------------
 
     // Send a ping to confirm a successful connection
