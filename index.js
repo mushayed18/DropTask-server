@@ -79,6 +79,28 @@ async function run() {
         res.status(500).json({ message: "Internal server error." });
       }
     });
+
+
+    // fetch the tasks of logged in user
+    app.get("/tasks/:userId", async (req, res) => {
+      try {
+        const { userId } = req.params;
+    
+        if (!userId) {
+          return res.status(400).json({ message: "User ID is required." });
+        }
+    
+        // Ensure userId is correctly treated as a string
+        const userTasks = await tasksCollection.find({ userId: userId }).toArray();
+    
+        res.status(200).json(userTasks);
+    
+      } catch (error) {
+        console.error("Error fetching tasks:", error);
+        res.status(500).json({ message: "Internal server error." });
+      }
+    });
+    
     
 
     // -----------------------------------------
