@@ -23,7 +23,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     // -----------------------------------------
     const usersCollection = client.db("DropTaskDB").collection("users");
@@ -31,27 +31,42 @@ async function run() {
 
     // API to store user info only on first login
     app.post("/users", async (req, res) => {
-      const user = req.body; // { uid, email, displayName }
+      const { email, displayName } = req.body; // Extract only email and displayName
 
-      // Check if user already exists
-      const existingUser = await usersCollection.findOne({ uid: user.uid });
-
-      if (existingUser) {
-        return res.send({ message: "User already exists", inserted: false });
+      if (!email || !displayName) {
+        return res
+          .status(400)
+          .json({ message: "Email and display name are required." });
       }
 
-      // Insert new user
-      const result = await usersCollection.insertOne(user);
-      res.send({ message: "User added successfully", inserted: true, result });
+      try {
+        // Check if the user already exists using email
+        const existingUser = await usersCollection.findOne({ email });
+
+        if (existingUser) {
+          return res.send({ message: "User already exists", inserted: false });
+        }
+
+        // Insert new user without UID
+        const result = await usersCollection.insertOne({ email, displayName });
+        res.send({
+          message: "User added successfully",
+          inserted: true,
+          result,
+        });
+      } catch (error) {
+        console.error("Error adding user:", error);
+        res.status(500).json({ message: "Internal server error." });
+      }
     });
 
     // add task api endpoint
     app.post("/tasks", async (req, res) => {
       try {
-        const { title, description, userId } = req.body;
+        const { title, description, email } = req.body; // Use email instead of userId
 
-        if (!userId) {
-          return res.status(400).json({ message: "User ID is required." });
+        if (!email) {
+          return res.status(400).json({ message: "User email is required." });
         }
 
         if (!title || title.length > 50) {
@@ -71,7 +86,7 @@ async function run() {
           description: description || "",
           timestamp: new Date(),
           category: "To-Do",
-          userId, // Associate the task with the logged-in user
+          email, // Associate the task with the user's email
         };
 
         const result = await tasksCollection.insertOne(newTask);
@@ -83,18 +98,16 @@ async function run() {
     });
 
     // fetch the tasks of logged in user
-    app.get("/tasks/:userId", async (req, res) => {
+    app.get("/tasks/:email", async (req, res) => {
       try {
-        const { userId } = req.params;
+        const { email } = req.params;
 
-        if (!userId) {
-          return res.status(400).json({ message: "User ID is required." });
+        if (!email) {
+          return res.status(400).json({ message: "User email is required." });
         }
 
-        // Ensure userId is correctly treated as a string
-        const userTasks = await tasksCollection
-          .find({ userId: userId })
-          .toArray();
+        // Fetch tasks based on user email instead of userId
+        const userTasks = await tasksCollection.find({ email }).toArray();
 
         res.status(200).json(userTasks);
       } catch (error) {
@@ -109,21 +122,34 @@ async function run() {
     app.put("/tasks/:taskId", async (req, res) => {
       try {
         const { taskId } = req.params;
-        const { category, position } = req.body; // Accept category and position
+        const { title, description, email } = req.body; // Accept title & description
+
+        if (!email) {
+          return res.status(400).json({ message: "User email is required." });
+        }
 
         // Prepare update fields
         let updateFields = { timestamp: new Date() };
-        if (category) updateFields.category = category;
-        if (position !== undefined) updateFields.position = position; // Update position
+        if (title) updateFields.title = title;
+        if (description) updateFields.description = description;
 
-        // Update task in the database
+        // Update task only if it belongs to the correct user
         const updatedTask = await tasksCollection.findOneAndUpdate(
-          { _id: new ObjectId(taskId) },
+          { _id: new ObjectId(taskId), email }, // ✅ Match by email
           { $set: updateFields },
           { returnDocument: "after" }
         );
 
-        res.json({ message: "Task updated successfully", task: updatedTask });
+        if (!updatedTask.value) {
+          return res
+            .status(404)
+            .json({ message: "Task not found or access denied." });
+        }
+
+        res.json({
+          message: "Task updated successfully",
+          task: updatedTask.value,
+        });
       } catch (error) {
         console.error("Error updating task:", error);
         res.status(500).json({ message: "Internal server error." });
@@ -134,19 +160,35 @@ async function run() {
     app.delete("/tasks/:id", async (req, res) => {
       try {
         const { id } = req.params;
+        const { email } = req.body; // ✅ Get email from request body
+
+        if (!email) {
+          return res.status(400).json({ message: "User email is required." });
+        }
+
+        // Delete task only if it belongs to the correct user
         const result = await tasksCollection.deleteOne({
           _id: new ObjectId(id),
+          email, // ✅ Match by email to prevent unauthorized deletion
         });
-        res.json(result);
+
+        if (result.deletedCount === 0) {
+          return res
+            .status(404)
+            .json({ message: "Task not found or access denied." });
+        }
+
+        res.json({ message: "Task deleted successfully", result });
       } catch (error) {
-        res.status(500).json({ error: "Failed to delete task" });
+        console.error("Error deleting task:", error);
+        res.status(500).json({ message: "Failed to delete task." });
       }
     });
 
     // -----------------------------------------
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
