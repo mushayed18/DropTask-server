@@ -104,48 +104,44 @@ async function run() {
     });
 
     // Update Task API
-    const { ObjectId } = require("mongodb"); 
+    const { ObjectId } = require("mongodb");
 
     app.put("/tasks/:taskId", async (req, res) => {
       try {
         const { taskId } = req.params;
-        const { title, description } = req.body;
-    
+        const { category, position } = req.body; // Accept category and position
+
+        // Prepare update fields
+        let updateFields = { timestamp: new Date() };
+        if (category) updateFields.category = category;
+        if (position !== undefined) updateFields.position = position; // Update position
+
+        // Update task in the database
         const updatedTask = await tasksCollection.findOneAndUpdate(
           { _id: new ObjectId(taskId) },
-          { 
-            $set: { 
-              title, 
-              description, 
-              timestamp: new Date() 
-            } 
-          },
+          { $set: updateFields },
           { returnDocument: "after" }
         );
-    
-        if (!updatedTask) {
-          return res.status(404).json({ message: "Task not found." });
-        }
-    
+
         res.json({ message: "Task updated successfully", task: updatedTask });
       } catch (error) {
         console.error("Error updating task:", error);
         res.status(500).json({ message: "Internal server error." });
       }
     });
-    
 
     // Delete a task (DELETE)
     app.delete("/tasks/:id", async (req, res) => {
       try {
         const { id } = req.params;
-        const result = await tasksCollection.deleteOne({ _id: new ObjectId(id) });
+        const result = await tasksCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
         res.json(result);
       } catch (error) {
         res.status(500).json({ error: "Failed to delete task" });
       }
     });
-
 
     // -----------------------------------------
 
